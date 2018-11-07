@@ -219,7 +219,7 @@ oc delete all --all -n myproject
 
 == Run Demo
 
-Follow instructions at https://github.com/blues-man/knative-serverless-demo-openslava/blob/master/demo/README.adoc to run a NodeJS sample.
+Follow instructions  https://github.com/blues-man/serverless-demo-openshift/blob/master/demo/README.adoc[here] to run a NodeJS sample.
 
 == Other awesome Knative sample apps
 
