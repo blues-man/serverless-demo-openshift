@@ -1,7 +1,7 @@
 var express = require("express");
 var app = express();
 
-var msg = (process.env.MESSAGE_PREFIX || "Welcome to") + " Openslava!\n";
+var msg = (process.env.MESSAGE_PREFIX || "Hello") + " OpenShift!\n";
 
 app.get("/", function(req, res, next) {
   res.status(200).send(msg);
