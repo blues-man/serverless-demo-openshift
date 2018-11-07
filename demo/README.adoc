@@ -1,0 +1,96 @@
+:experimental:
+
+= Route to your Revisioned Serverless Service
+
+The sample code in this section helps you to deploy serverless workload using https://github.com/knative/docs/tree/master/serving[Knative-Serving] following configuration and route workflow.  The code also shows how to distribute the traffic across multiple revisions of a serverless workload.
+
+This repo folder has NodeJS example.
+
+== Building and Deploying Application
+
+The source folder **demo** will be referred as `$PROJECT_HOME`. The following section details on how to build NodeJS Application.
+
+=== Building 
+
+The application uses Knative-build
+
+=== Node
+
+[source,bash]
+----
+cd $PROJECT_HOME/node
+
+docker build -t dev.local/greeter:0.0.1 --rm . # <1>
+----
+<1> this should build a image like `dev.local/greeter:0.0.1`
+
+=== Deploying Service
+
+==== Revision 1
+
+[source,bash]
+----
+cd $PROJECT_HOME
+oc apply -f config/configuration_rev1.yaml
+oc apply -f route/route_default.yaml
+----
+
+Update the environment variable `MESSAGE_PREFIX` in link:./config/configuration_rev2.yaml[configuration_rev2.yaml]
+
+==== Revision 2
+
+[source,bash]
+----
+cd $PROJECT_HOME
+oc apply -f config/configuration_rev2.yaml
+----
+
+=== Invoking Service
+
+[source,bash]
+----
+bin/call.sh
+----
+
+=== Split traffic by revisions
+
+==== 50-50
+
+[source,bash]
+----
+cd $PROJECT_HOME
+oc apply -f route/route_rev1-50_rev2-50.yaml
+----
+
+==== All traffic to Revision 2
+
+[source,bash]
+----
+cd $PROJECT_HOME
+oc apply -f route/route_all_rev2.yaml
+----
+
+==== All traffic to Revision 1
+
+[source,bash]
+----
+cd $PROJECT_HOME
+oc apply -f route/route_all_rev1.yaml
+----
+
+== Useful commands
+
+The following are some useful commands
+
+- Get all **Knative services** on project **myproject** `oc -nmyproject get service.serving.knative.dev`
+- Get all **Knative configurations** on project **myproject** `oc -nmyproject get configuration.serving.knative.dev`
+- Get all **Knative routes** on project **myproject** `oc -nmyproject get route.serving.knative.dev`
+- Get all **Knative revisions** on project **myproject** `oc -nmyproject get revision.serving.knative.dev`
+
+[TIP]
+====
+If you need to get the specific service,configuration,route or revision etc., the add the name to the end of the commands above
+e.g to get our service named **greeter**:
+
+`oc -n myproject get service.serving.knative.dev greeter`
+====

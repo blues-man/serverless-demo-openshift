@@ -1,0 +1,226 @@
+== Serverless with OpenShift Demo
+
+This is a tutorial to learn Knative on https://www.okd.io/minishift/[Minishift], a containerized OKD cluster to develop and run Applications locally, with a sample on how to deploy a serverless service and how to manage Revisions for it.
+
+All the content is adapted from great https://github.com/kameshsampath[Kamesh Sampath] https://github.com/redhat-developer-demos/knative-minishift[examples] and blog posts at https://blog.openshift.com/knative-configurations-routes-and-revisions/[OpenShift blogs]
+
+== Minishift setup
+
+* Download the archive for your operating system from the https://github.com/minishift/minishift/releases/tag/v1.25.0[Minishift v1.25.0 Release page] and extract its contents
+* Copy the contents of the directory to your preferred location.
+* Add the minishift binary to your PATH environment variable.
+
+Run the following command to verify your minishift is configured correctly:
+[source,bash]
+----
+# returns minishift v1.25.0+90fb23e
+minishift version 
+----
+
+[source,bash]
+-----
+# make sure the profile is set correctly
+minishift profile set knative
+
+# Pinning to the right needed OpenShift version in this case v3.11.0
+minishift config set openshift-version v3.11.0
+
+# memory for the vm
+minishift config set memory 8GB
+
+# the vCpus for the vm
+minishift config set cpus 4
+
+# extra disk size for the vm
+minishift config set disk-size 50g
+
+# caching the images that will be downloaded during app deployments
+minishift config set image-caching true
+
+# Add new user called admin with password with role cluster-admin
+minishift addons enable admin-user
+
+# Allow the containers to be run with uid 0
+minishift addons enable anyuid
+
+# Start minishift
+minishift start
+
+eval $(minishift docker-env) && eval $(minishift oc-env)
+-----
+
+== Enable Admission Controller Hooks
+
+[source,bash]
+----
+#!/bin/bash
+# Enable admission controller webhooks
+# The configuration stanzas below look weird and are just to workaround
+# https://bugzilla.redhat.com/show_bug.cgi?id=1635918
+minishift openshift config set --target=kube --patch '{
+    "admissionConfig": {
+        "pluginConfig": {
+            "ValidatingAdmissionWebhook": {
+                "configuration": {
+                    "apiVersion": "apiserver.config.k8s.io/v1alpha1",
+                    "kind": "WebhookAdmission",
+                    "kubeConfigFile": "/dev/null"
+                }
+            },
+            "MutatingAdmissionWebhook": {
+                "configuration": {
+                    "apiVersion": "apiserver.config.k8s.io/v1alpha1",
+                    "kind": "WebhookAdmission",
+                    "kubeConfigFile": "/dev/null"
+                }
+            }
+        }
+    }
+}'
+----
+
+<1> wait for some time after this step to allow OpenShift to be restarted automatically. e.g. you can try doing `oc login -u admin -p admin` until you are able to login again.
+
+== Pre-requisites
+
+https://docs.okd.io/3.10/admin_guide/manage_scc.html[SCCs (Security Context Constraints)] are the precursor to the PSP (Pod Security Policy) mechanism in Kubernetes.
+
+----
+oc project myproject 
+# Set privileged scc to default SA in myproject
+oc adm policy add-scc-to-user privileged -z default
+# Automatic Istio sidecar injection
+oc label namespace myproject istio-injection=enabled
+oc get namespace --show-labels  #<1>
+----
+
+<1> This should show the **myproject** namespace with **istio-injection=enabled** label
+
+== Knative Deployment
+
+=== Istio
+
+[source,bash]
+----
+
+# Grant the necessary privileges to the service accounts Istio will use:
+oc adm policy add-scc-to-user anyuid -z istio-ingress-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z default -n istio-system
+oc adm policy add-scc-to-user anyuid -z prometheus -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-egressgateway-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-citadel-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-ingressgateway-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-cleanup-old-ca-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-mixer-post-install-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-mixer-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-pilot-service-account -n istio-system
+oc adm policy add-scc-to-user anyuid -z istio-sidecar-injector-service-account -n istio-system
+oc adm policy add-cluster-role-to-user cluster-admin -z istio-galley-service-account -n istio-system
+
+# Deploy Istio
+curl -L https://storage.googleapis.com/knative-releases/serving/latest/istio.yaml | oc apply -f -
+
+----
+
+[IMPORTANT]
+=====
+The Istio v1.0.1 and above release automatic sidecar injection has removed `privileged:true` from init containers,this will cause the Pods with istio proxies automatic inject to crash. Run the following command to update the **istio-sidecar-injector** ConfigMap
+
+[sources,bash]
+----
+#/bin/bash
+
+$ oc get cm istio-sidecar-injector -n istio-system -oyaml | sed -e 's/securityContext:/securityContext:\\n      privileged: true/' | oc replace -f -
+----
+
+Please run this command only once to avoid multiple additions
+=====
+
+<1> This will setup the required OpenShift security policies that are required to deploy and make Istio functional
+
+Wait until all the pods on istio-system are up and running, you can verify it with the command `oc get pods -w -n istio-system`.
+
+=== Knative Serving
+
+https://github.com/knative/serving[Knative Serving] supports deploying of serverless functions and applications on Kubernetes.
+
+[source,bash]
+----
+#/bin/bash
+
+# Grant the necessary privileges to the service accounts Knative will use:
+oc adm policy add-scc-to-user anyuid -z build-controller -n knative-build
+oc adm policy add-scc-to-user anyuid -z controller -n knative-serving
+oc adm policy add-scc-to-user anyuid -z autoscaler -n knative-serving
+oc adm policy add-cluster-role-to-user cluster-admin -z build-controller -n knative-build
+oc adm policy add-cluster-role-to-user cluster-admin -z controller -n knative-serving
+
+# Deploy Knative serving 
+curl -L https://storage.googleapis.com/knative-releases/serving/latest/release-no-mon.yaml | oc apply -f -
+----
+
+<1> This will setup the required OpenShift security policies that are required to deploy and make Knative functional
+
+Wait until all the pods in the knative-serving are up and running, you can verify it with the command `oc get pods -n knative-serving -w` and `oc get pods -n knative-build -w`.
+
+[TIP]
+====
+Add the minishift ingress CIDR to the OS routing table to allow calling Knative services using LoadBalancer IP:
+
+[sources,bash]
+----
+
+# Only for macOS
+sudo route -n add -net $(minishift openshift config view | grep ingressIPNetworkCIDR | awk '{print $NF}') $(minishift ip)
+
+# Only for Linux
+sudo ip route add $(minishift openshift config view | grep ingressIPNetworkCIDR | sed 's/\r$//' | awk '{print $NF}') via $(minishift ip)
+----
+====
+
+== Test Application Deployment 
+
+[sources,bash]
+-----
+
+oc project myproject
+
+export IP_ADDRESS=$(oc get svc knative-ingressgateway -n istio-system -o 'jsonpath={.status.loadBalancer.ingress[0].ip}')
+
+oc create -f helloworld-go-service.yaml
+ 
+# Wait for the hello pod to enter its `Running` state
+oc get pod --watch
+ 
+# This should output 'Hello World: Go Sample v1!'
+curl -H "Host: helloworld-go.myproject.example.com" http://$IP_ADDRESS
+
+-----
+
+The curl above should return "Hello World: Go Sample v1!".
+
+If you'd like to view the available sample apps and deploy one of your choosing, head to the https://github.com/knative/docs/blob/master/serving/samples/README.md[sample apps] repo.
+
+== Clean up
+
+[sources,bash]
+-----
+
+oc delete configurations.serving.knative.dev --all
+oc delete revisions.serving.knative.dev --all
+oc delete routes.serving.knative.dev --all
+oc delete services.serving.knative.dev --all
+
+(or)
+
+oc delete all --all -n myproject
+
+-----
+
+== Run Demo
+
+Follow instructions at https://github.com/blues-man/knative-serverless-demo-openslava/blob/master/demo/README.adoc to run a NodeJS sample.
+
+== Other awesome Knative sample apps
+
+https://github.com/knative/docs/tree/master/serving/samples
