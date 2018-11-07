@@ -1,0 +1,46 @@
+apiVersion: build.knative.dev/v1alpha1
+kind: BuildTemplate
+metadata:
+  name: node-buildah
+spec:
+  parameters:
+    - name: APP_BUILDER_IMAGE
+      description: The builder image used to build the node application
+      default: gcr.io/cloud-builders/yarn
+    - name: APP_MAIN
+      description: The javascript file that starts the application, e.g. the main attribute of package.json
+      default: index.js
+    - name: BUILDER_IMAGE
+      description: The builder image to build the OCI container 
+      default: quay.io/workspace7/buildah
+    - name: IMAGE_NAME
+      description: The name of the image to build and push, you can use %a for artifact id from pom.xml and %v for version from pom.xml and %g for group from pom.xml
+      default: "dev.local/mynodeapp"
+    - name: CONTEXT_DIR
+      description: The directory containing the app, relative to the source repository root
+      default: .
+    - name: BUILDAH_SCRIPT
+      description: The name of buildah script that will be used to build OCI container
+      default: buildah.sh
+
+  steps:
+    - name: build-app
+      image: ${APP_BUILDER_IMAGE}
+      args:
+        - install
+      workingDir: /workspace/${CONTEXT_DIR}
+    - name: container-build-push
+      image: ${BUILDER_IMAGE}
+      workingDir: /workspace/${CONTEXT_DIR}
+      args: ["bash","-c","/workspace/${CONTEXT_DIR}/${BUILDAH_SCRIPT}"]
+      env:
+      - name: CONTEXT_DIR
+        value: "${CONTEXT_DIR}"
+      - name: IMAGE_NAME
+        value: "${IMAGE_NAME}"
+      - name: APP_MAIN
+        value: "${APP_MAIN}"
+      - name: POD_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace

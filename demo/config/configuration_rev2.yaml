@@ -7,9 +7,13 @@ spec:
     metadata:
       labels:
         app: greeter
+      annotations:
+        alpha.image.policy.openshift.io/resolve-names: "*"
     spec:
       container:
-        image: dev.local/greeter:0.0.1
+        # This should be a fully qualified domain name e.g. quay.io/example/myimage:mytag
+        # This is configured to use the inbuilt default docker registry
+        image: docker-registry.default.svc:5000/myproject/greeter:0.0.1
         env:
           - name: MESSAGE_PREFIX
             value: Ciao

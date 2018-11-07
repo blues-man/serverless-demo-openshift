@@ -3,10 +3,34 @@ kind: Configuration
 metadata:
   name: greeter
 spec:
+  build:
+    apiVersion: build.knative.dev/v1alpha1
+    kind: Build
+    metadata:
+      name: greeter
+    spec:
+      serviceAccountName: builder
+      source:
+        git:
+          url: https://github.com/blues-man/serverless-demo-openshift
+          revision: buildah
+      template:
+        name: node-buildah
+        arguments:
+          - name: IMAGE_NAME
+            value: "greeter:0.0.1"
+          - name: CONTEXT_DIR
+            value: "demo/node"
+          - name: APP_MAIN
+            value: "app.js"
   revisionTemplate:
     metadata:
       labels:
         app: greeter
+      annotations:
+        alpha.image.policy.openshift.io/resolve-names: "*"
     spec:
       container:
-        image: dev.local/greeter:0.0.1
+        # This should be a fully qualified domain name e.g. quay.io/example/myimage:mytag
+        # This is configured to use the inbuilt default docker registry
+        image: docker-registry.default.svc:5000/myproject/greeter:0.0.1
