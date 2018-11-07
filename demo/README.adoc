@@ -6,23 +6,54 @@ The sample code in this section helps you to deploy serverless workload using ht
 
 This repo folder has NodeJS example.
 
+
+
+== Prerequisites
+
+- Basic knowledge of how to build container images with https://buildah.io[buildah]
+
+=== User namespaces
+By default RHEL/Centos sets the max_user_namespaces value to **0**, you need to set that to bigger value to make the buildah container builds to pass, set the `max_user_namespaces` kernel parameter to 15000. For more details on user namespaces refer to http://man7.org/linux/man-pages/man7/user_namespaces.7.html
+
+[source,bash]
+----
+minishift ssh
+sudo -i
+echo "sysctl user.max_user_namespaces=15000" >> /etc/sysctl.d/99-sysctl.conf
+sysctl -p
+----
+save the value permanently surviving reboots
+
+=== Skipping tag to digest
+The Knative-serving is by default skips tag to digest for the registries `ko.local` and `dev.local`, as part of this demo you will push the build image to internal default docker registry (__docker-registry.default.svc:5000__) , you will need update `registriesSkippingTagResolving` attribute of the config-controller ConfigMap to include the registry **docker-registry.default.svc:5000** to be skipped for tag to digest resolving.
+
+[source,bash]
+----
+val=$(oc -n knative-serving get cm config-controller -oyaml | yq r - data.registriesSkippingTagResolving | awk '{print $1",docker-registry.default.svc:5000"}')
+oc -n knative-serving get cm config-controller -oyaml | yq w - data.registriesSkippingTagResolving $val | oc apply -f -
+----
+
+
 == Building and Deploying Application
 
 The source folder **demo** will be referred as `$PROJECT_HOME`. The following section details on how to build NodeJS Application.
 
 === Building 
 
-The application uses Knative-build
+The application uses Knative-build with Buildah invoking it through a Knative BuildTemplate
 
 === Node
 
+
+=== Apply BuildTemplate
+
 [source,bash]
 ----
-cd $PROJECT_HOME/node
+cd $PROJECT_HOME
 
-docker build -t dev.local/greeter:0.0.1 --rm . # <1>
+oc apply -f build/templates/node-buildah-template.yaml
+
 ----
-<1> this should build a image like `dev.local/greeter:0.0.1`
 
 === Deploying Service
 
