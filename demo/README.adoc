@@ -19,7 +19,7 @@ By default RHEL/Centos sets the max_user_namespaces value to **0**, you need to 
 ----
 minishift ssh
 sudo -i
-echo "sysctl user.max_user_namespaces=15000" >> /etc/sysctl.d/99-sysctl.conf
+echo "user.max_user_namespaces=15000" >> /etc/sysctl.d/99-sysctl.conf
 sysctl -p
 ----
 save the value permanently surviving reboots
